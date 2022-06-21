@@ -14,6 +14,7 @@ import java.util.Scanner;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.MouseEvent;
 import org.eclipse.swt.events.MouseListener;
+import org.eclipse.swt.events.MouseMoveListener;
 import org.eclipse.swt.events.PaintEvent;
 import org.eclipse.swt.events.PaintListener;
 import org.eclipse.swt.graphics.GC;
@@ -24,12 +25,16 @@ import org.eclipse.swt.widgets.Text;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
+import org.eclipse.swt.custom.ScrolledComposite;
 
 public class AppMain {
 
 	protected Shell shell;
+	protected ScrolledComposite scrolledComposite;
+	private int compositeWidth = 256;
+	private int compositeGridWidth = compositeWidth / 8;
 	private int GRID_COUNT = 8;
-	private int CANVAS_WIDTH = 1024;
+	private int CANVAS_WIDTH = 768;
 	private int SPRITE_WIDTH = CANVAS_WIDTH / 16;
 	private int gridWidth = SPRITE_WIDTH / GRID_COUNT;
 	private byte[] fileBytes;
@@ -44,8 +49,15 @@ public class AppMain {
 	private int mouseY = 0;
 	private int currentXIndex = 0;
 	private int currentYIndex = 0;
+	private int currentSpriteIndex = 0;
+	private final int EDIT_MODE = 0;
+	private final int SELECT_MODE = 1;
+	private int currentMode = EDIT_MODE;
+	private boolean showGrid = false;
+	private boolean mouseDown = false;
 	
 	private String currentCharFileName = "";
+	private Label lblTileNumber;
 
 	/**
 	 * Launch the application.
@@ -96,6 +108,131 @@ public class AppMain {
 		btnLoadChr.setBounds(1166, 659, 96, 27);
 		btnLoadChr.setText("Load CHR");
 		
+		scrolledComposite = new ScrolledComposite(shell, SWT.BORDER | SWT.H_SCROLL | SWT.V_SCROLL);
+		scrolledComposite.setBounds(989, 350, 256, 256);
+		scrolledComposite.setExpandHorizontal(true);
+		scrolledComposite.setExpandVertical(true);
+		scrolledComposite.setBackground(display.getSystemColor(palette[2]));
+		
+		lblTileNumber = new Label(shell, SWT.NONE);
+		lblTileNumber.setBounds(995, 320, 150, 14);
+		lblTileNumber.setText("Tile Number: " + currentSpriteIndex);
+		
+		Button btnEditMode = new Button(shell, SWT.RADIO);
+		btnEditMode.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				currentMode = EDIT_MODE;
+			}
+		});
+		btnEditMode.setBounds(995, 285, 89, 15);
+		btnEditMode.setText("Edit Mode");
+		btnEditMode.setSelection(true);
+		
+		Button btnSelectmode = new Button(shell, SWT.RADIO);
+		btnSelectmode.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				currentMode = SELECT_MODE;
+			}
+		});
+		btnSelectmode.setBounds(1129, 285, 116, 15);
+		btnSelectmode.setText("SelectMode");
+		
+		Composite composite = new Composite(shell, SWT.NONE);
+		composite.setBounds(997, 201, 64, 64);
+		composite.setBackground(display.getSystemColor(palette[currentPaletteIndex]));
+		
+		Label lblCurrentColor = new Label(shell, SWT.NONE);
+		lblCurrentColor.setBounds(989, 171, 96, 14);
+		lblCurrentColor.setText("Current Color");
+		
+		Button btnShowGrid = new Button(shell, SWT.CHECK);
+		btnShowGrid.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				showGrid = !showGrid;
+				shell.redraw();
+			}
+		});
+		btnShowGrid.setBounds(1129, 249, 93, 16);
+		btnShowGrid.setText("Show Grid");
+		btnShowGrid.setSelection(false);
+		scrolledComposite.addPaintListener(new PaintListener() {
+
+			@Override
+			public void paintControl(PaintEvent e) {
+				GC gc = e.gc;
+				gc.setForeground(display.getSystemColor(SWT.COLOR_GRAY));
+				gc.setBackground(display.getSystemColor(SWT.COLOR_RED));
+				
+	            //Rectangle rect = shell.getClientArea();
+	            gc.drawRectangle(0, 0, compositeWidth, compositeWidth);
+	            
+	            for (int i=0; i<8; i++) {
+            		for (int j=0; j<8; j++) {
+            			int index = spriteBytes[currentSpriteIndex][i][j];
+            			gc.setBackground(display.getSystemColor(palette[index]));
+            			gc.fillRectangle(j*compositeGridWidth, i*compositeGridWidth, compositeGridWidth, compositeGridWidth);
+            		}
+	            }
+
+	            // draw gridlines
+	            for (int i=0; i<GRID_COUNT; i++) {
+	            	gc.drawLine(i*compositeGridWidth, 0, i*compositeGridWidth, 256);
+	            	if (i % 8 == 0)
+	            		gc.drawLine(i*compositeGridWidth+1, 0, i*compositeGridWidth+1, 256);
+	            }
+	            for (int i=0; i<GRID_COUNT; i++) {
+	            	gc.drawLine(0, i*compositeGridWidth, 256, i*compositeGridWidth);
+	            	if (i % 8 == 0)
+	            		gc.drawLine(0, i*compositeGridWidth+1, 256, i*compositeGridWidth+1);
+
+	            }
+			}
+			
+		});
+		
+		scrolledComposite.addMouseListener(new MouseListener() {
+			
+			@Override
+			public void mouseUp(MouseEvent e) {
+				mouseDown = false;
+			}
+			
+			@Override
+			public void mouseDown(MouseEvent e) {
+				// TODO Auto-generated method stub
+//				System.out.println("mouseX: " + e.x + " mouseY: " + e.y);
+//				System.out.println("x: " + e.x / compositeGridWidth + " y: " + e.y / compositeGridWidth);
+				spriteBytes[currentSpriteIndex][(e.y / compositeGridWidth)%8][(e.x / compositeGridWidth)%8] = currentPaletteIndex;
+				shell.redraw();
+				scrolledComposite.redraw();
+				mouseDown = true;
+			}
+			
+			@Override
+			public void mouseDoubleClick(MouseEvent e) {
+
+			}
+		});
+		scrolledComposite.addMouseMoveListener(new MouseMoveListener() {
+			
+			@Override
+			public void mouseMove(MouseEvent e) {
+				if (e.x > 0 && e.x < 256 && e.y > 0 && e.y < 256) {
+					if (mouseDown) {
+						spriteBytes[currentSpriteIndex][(e.y / compositeGridWidth)%8][(e.x / compositeGridWidth)%8] = currentPaletteIndex;
+						shell.redraw();
+						scrolledComposite.redraw();
+					}
+				}
+				else {
+					mouseDown = false;
+				}
+			}
+		});
+		
 		shell.addPaintListener(new PaintListener() {
 			
 			@Override
@@ -129,16 +266,24 @@ public class AppMain {
 	            
 	            // draw gridlines
 	            for (int i=0; i<GRID_COUNT*16; i++) {
-	            	gc.drawLine(i*gridWidth, 0, i*gridWidth, CANVAS_WIDTH);
+	            	if (showGrid)
+	            		gc.drawLine(i*gridWidth, 0, i*gridWidth, CANVAS_WIDTH);
 	            	if (i % 8 == 0)
 		            	gc.drawLine(i*gridWidth+1, 0, i*gridWidth+1, CANVAS_WIDTH);
 	            }
 	            for (int i=0; i<GRID_COUNT*16; i++) {
-	            	gc.drawLine(0, i*gridWidth, CANVAS_WIDTH, i*gridWidth);
+	            	if (showGrid)
+	            		gc.drawLine(0, i*gridWidth, CANVAS_WIDTH, i*gridWidth);
 	            	if (i % 8 == 0)
 		            	gc.drawLine(0, i*gridWidth+1, CANVAS_WIDTH, i*gridWidth+1);
 
 	            }
+	            
+	            // highlight current selected tile
+	            int currentSpriteX = (currentSpriteIndex % 16) * gridWidth * 8;
+	            int currentSpriteY = (currentSpriteIndex / 16) * gridWidth * 8;
+    			gc.setForeground(display.getSystemColor(SWT.COLOR_YELLOW));
+    			gc.drawRectangle(currentSpriteX, currentSpriteY, gridWidth*8, gridWidth*8);
 	            
 	            // Print MouseX and MouseY
 	            gc.setForeground(display.getSystemColor(SWT.COLOR_YELLOW));
@@ -157,27 +302,72 @@ public class AppMain {
 			@Override
 			public void mouseDown(MouseEvent e) {
 				if (e.x < CANVAS_WIDTH && e.y < CANVAS_WIDTH) {
-					mouseX = e.x;
-					currentXIndex = mouseX / gridWidth;
-					mouseY = e.y;
-					currentYIndex = mouseY / gridWidth;
-					int spriteIndex = currentXIndex / 8 + (currentYIndex / 8)*16;
-					spriteBytes[spriteIndex][currentYIndex%8][currentXIndex%8] = currentPaletteIndex;
-					shell.redraw();
+					if (currentMode == EDIT_MODE) {
+						mouseX = e.x;
+						currentXIndex = mouseX / gridWidth;
+						mouseY = e.y;
+						currentYIndex = mouseY / gridWidth;
+						int spriteIndex = currentXIndex / 8 + (currentYIndex / 8)*16;
+						spriteBytes[spriteIndex][currentYIndex%8][currentXIndex%8] = currentPaletteIndex;
+						shell.redraw();
+						scrolledComposite.redraw();
+					}
 				}
+//					else if (currentMode == SELECT_MODE) {
+//						currentSpriteIndex = (e.x / gridWidth) / 8 + ((e.y / gridWidth) / 8)*16;
+//						shell.redraw();
+//						scrolledComposite.redraw();
+//						lblTileNumber.setText("Tile Number: " + currentSpriteIndex);
+//					}
+//				}
+				if (e.x < CANVAS_WIDTH && e.y < CANVAS_WIDTH) {
+					if (currentMode == SELECT_MODE) {
+						currentSpriteIndex = (e.x / gridWidth) / 8 + ((e.y / gridWidth) / 8)*16;
+						shell.redraw();
+						scrolledComposite.redraw();
+						lblTileNumber.setText("Tile Number: " + currentSpriteIndex);
+					}
+				}
+				mouseDown = true;
 				
 				if (e.x > paletteX && e.x < paletteX+paletteWidth && e.y > paletteY && e.y < paletteY + paletteHeight) {
 					currentPaletteIndex = (e.x - paletteX) / (paletteWidth / 4);
+					composite.setBackground(display.getSystemColor(palette[currentPaletteIndex]));
 				}
 			}
 
 			@Override
 			public void mouseUp(MouseEvent e) {
-				
+				mouseDown = false;
 			}
 			
 		});
-		
+		shell.addMouseMoveListener(new MouseMoveListener() {
+			
+			@Override
+			public void mouseMove(MouseEvent e) {
+				if (mouseDown) {
+					if (e.x < CANVAS_WIDTH && e.y < CANVAS_WIDTH) {
+						if (currentMode == EDIT_MODE) {
+							mouseX = e.x;
+							currentXIndex = mouseX / gridWidth;
+							mouseY = e.y;
+							currentYIndex = mouseY / gridWidth;
+							int spriteIndex = currentXIndex / 8 + (currentYIndex / 8)*16;
+							spriteBytes[spriteIndex][currentYIndex%8][currentXIndex%8] = currentPaletteIndex;
+							shell.redraw();
+							scrolledComposite.redraw();
+						}
+//						else if (currentMode == SELECT_MODE) {
+//							currentSpriteIndex = (e.x / gridWidth) / 8 + ((e.y / gridWidth) / 8)*16;
+//							shell.redraw();
+//							scrolledComposite.redraw();
+//							lblTileNumber.setText("Tile Number: " + currentSpriteIndex);
+//						}
+					}
+				}
+			}
+		});
 		
 		shell.layout();
 		shell.open();
@@ -294,6 +484,7 @@ public class AppMain {
 			spriteBytes[n] = convertNesFormatToDisplayFormat(fileBytes, n);
 		}
 		shell.redraw();
+		scrolledComposite.redraw();
 	}
 	
 	private void saveFile(String fileName) throws IOException {
