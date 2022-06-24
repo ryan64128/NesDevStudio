@@ -2,14 +2,12 @@ import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.FileDialog;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.Composite;
-import org.eclipse.swt.widgets.DirectoryDialog;
+import org.eclipse.swt.widgets.Dialog;
 
-import java.awt.Color;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.Scanner;
 
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.MouseEvent;
@@ -18,10 +16,8 @@ import org.eclipse.swt.events.MouseMoveListener;
 import org.eclipse.swt.events.PaintEvent;
 import org.eclipse.swt.events.PaintListener;
 import org.eclipse.swt.graphics.GC;
-import org.eclipse.swt.graphics.Rectangle;
+import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.widgets.Label;
-import org.eclipse.swt.widgets.Canvas;
-import org.eclipse.swt.widgets.Text;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
@@ -31,6 +27,7 @@ public class AppMain {
 
 	protected Shell shell;
 	protected ScrolledComposite scrolledComposite;
+	protected ScrolledComposite compositeMain;
 	private int compositeWidth = 256;
 	private int compositeGridWidth = compositeWidth / 8;
 	private int GRID_COUNT = 8;
@@ -39,12 +36,20 @@ public class AppMain {
 	private int gridWidth = SPRITE_WIDTH / GRID_COUNT;
 	private byte[] fileBytes;
 	private int[][][] spriteBytes;
-	private int[] palette = {SWT.COLOR_BLACK, SWT.COLOR_BLUE, SWT.COLOR_YELLOW, SWT.COLOR_WHITE};
+	private Color[][] palettes = {{new Color(84,84,84), new Color(48,0,136), new Color(8,58,0), new Color(0,0,0)},
+								  {new Color(84,84,84), new Color(48,0,136), new Color(8,58,0), new Color(0,0,0)},
+								  {new Color(84,84,84), new Color(48,0,136), new Color(8,58,0), new Color(0,0,0)},
+								  {new Color(84,84,84), new Color(48,0,136), new Color(8,58,0), new Color(0,0,0)},
+								  {new Color(84,84,84), new Color(48,0,136), new Color(8,58,0), new Color(0,0,0)},
+								  {new Color(84,84,84), new Color(48,0,136), new Color(8,58,0), new Color(0,0,0)},
+								  {new Color(84,84,84), new Color(48,0,136), new Color(8,58,0), new Color(0,0,0)},
+								  {new Color(84,84,84), new Color(48,0,136), new Color(8,58,0), new Color(0,0,0)}};
 	private int paletteX = 900;
 	private int paletteY = 20;
-	private int paletteWidth = 100;
-	private int paletteHeight = 25;
+	private int paletteWidth = 128;
+	private int paletteHeight = 32;
 	private int currentPaletteIndex = 0;
+	private int currentPalette = 0;
 	private int mouseX = 0;
 	private int mouseY = 0;
 	private int currentXIndex = 0;
@@ -58,11 +63,9 @@ public class AppMain {
 	
 	private String currentCharFileName = "";
 	private Label lblTileNumber;
+	
+	private PaletteDialog paletteDialog;
 
-	/**
-	 * Launch the application.
-	 * @param args
-	 */
 	public static void main(String[] args) {
 		try {
 			AppMain window = new AppMain();
@@ -72,9 +75,6 @@ public class AppMain {
 		}
 	}
 
-	/**
-	 * Open the window.
-	 */
 	public void open() {
 		fileBytes = new byte[4096];
 		spriteBytes = new int[256][8][8];
@@ -84,6 +84,7 @@ public class AppMain {
 		shell.setText("NES Studio - " + currentCharFileName);
 		shell.setLayout(null);
 		
+		paletteDialog = new PaletteDialog(shell);
 		Button btnNewButton = new Button(shell, SWT.NONE);
 		btnNewButton.addSelectionListener(new SelectionAdapter() {
 			@Override
@@ -107,12 +108,6 @@ public class AppMain {
 		});
 		btnLoadChr.setBounds(1166, 659, 96, 27);
 		btnLoadChr.setText("Load CHR");
-		
-		scrolledComposite = new ScrolledComposite(shell, SWT.BORDER | SWT.H_SCROLL | SWT.V_SCROLL);
-		scrolledComposite.setBounds(989, 350, 256, 256);
-		scrolledComposite.setExpandHorizontal(true);
-		scrolledComposite.setExpandVertical(true);
-		scrolledComposite.setBackground(display.getSystemColor(palette[2]));
 		
 		lblTileNumber = new Label(shell, SWT.NONE);
 		lblTileNumber.setBounds(995, 320, 150, 14);
@@ -141,10 +136,9 @@ public class AppMain {
 		
 		Composite composite = new Composite(shell, SWT.NONE);
 		composite.setBounds(997, 201, 64, 64);
-		composite.setBackground(display.getSystemColor(palette[currentPaletteIndex]));
 		
 		Label lblCurrentColor = new Label(shell, SWT.NONE);
-		lblCurrentColor.setBounds(989, 171, 96, 14);
+		lblCurrentColor.setBounds(989, 181, 96, 14);
 		lblCurrentColor.setText("Current Color");
 		
 		Button btnShowGrid = new Button(shell, SWT.CHECK);
@@ -152,12 +146,348 @@ public class AppMain {
 			@Override
 			public void widgetSelected(SelectionEvent e) {
 				showGrid = !showGrid;
-				shell.redraw();
+				compositeMain.redraw();
 			}
 		});
 		btnShowGrid.setBounds(1129, 249, 93, 16);
 		btnShowGrid.setText("Show Grid");
 		btnShowGrid.setSelection(false);
+		
+		Composite compositePalette1 = new Composite(shell, SWT.NONE);
+		compositePalette1.setBounds(989, 23, paletteWidth, paletteHeight);
+		compositePalette1.addPaintListener(new PaintListener() {
+			
+			@Override
+			public void paintControl(PaintEvent e) {
+				GC gc = e.gc;
+				int colorWidth = paletteWidth / 4;
+				for (int i=0; i<4; i++) {
+					gc.setBackground(palettes[0][i]);
+					gc.fillRectangle(i*colorWidth, 0, colorWidth, paletteHeight);
+				}
+				
+			}
+		});
+		compositePalette1.addMouseListener(new MouseListener() {
+			
+			@Override
+			public void mouseUp(MouseEvent arg0) {
+				
+			}
+			
+			@Override
+			public void mouseDown(MouseEvent e) {
+				currentPaletteIndex = e.x / (paletteWidth / 4);
+				currentPalette = 0;
+				compositeMain.redraw();
+				scrolledComposite.redraw();
+				composite.setBackground(palettes[currentPalette][currentPaletteIndex]);
+			}
+			
+			@Override
+			public void mouseDoubleClick(MouseEvent e) {
+				currentPaletteIndex = e.x / (paletteWidth / 4);
+				currentPalette = 0;
+				palettes[currentPalette][currentPaletteIndex] = paletteDialog.open();
+				compositeMain.redraw();
+				scrolledComposite.redraw();
+				composite.setBackground(palettes[currentPalette][currentPaletteIndex]);
+			}
+		});
+		Composite compositePalette2 = new Composite(shell, SWT.NONE);
+		compositePalette2.setBounds(989, 63, paletteWidth, paletteHeight);
+		compositePalette2.addPaintListener(new PaintListener() {
+			
+			@Override
+			public void paintControl(PaintEvent e) {
+				GC gc = e.gc;
+				int colorWidth = paletteWidth / 4;
+				for (int i=0; i<4; i++) {
+					gc.setBackground(palettes[1][i]);
+					gc.fillRectangle(i*colorWidth, 0, colorWidth, paletteHeight);
+				}
+				
+			}
+		});
+		compositePalette2.addMouseListener(new MouseListener() {
+			
+			@Override
+			public void mouseUp(MouseEvent arg0) {
+				
+			}
+			
+			@Override
+			public void mouseDown(MouseEvent e) {
+				currentPaletteIndex = e.x / (paletteWidth / 4);
+				currentPalette = 1;
+				compositeMain.redraw();
+				scrolledComposite.redraw();
+				composite.setBackground(palettes[currentPalette][currentPaletteIndex]);
+			}
+			
+			@Override
+			public void mouseDoubleClick(MouseEvent e) {
+				currentPaletteIndex = e.x / (paletteWidth / 4);
+				currentPalette = 1;
+				palettes[currentPalette][currentPaletteIndex] = paletteDialog.open();
+				compositeMain.redraw();
+				scrolledComposite.redraw();
+				composite.setBackground(palettes[currentPalette][currentPaletteIndex]);
+			}
+		});
+		Composite compositePalette3 = new Composite(shell, SWT.NONE);
+		compositePalette3.setBounds(989, 103, paletteWidth, paletteHeight);
+		compositePalette3.addPaintListener(new PaintListener() {
+			
+			@Override
+			public void paintControl(PaintEvent e) {
+				GC gc = e.gc;
+				int colorWidth = paletteWidth / 4;
+				for (int i=0; i<4; i++) {
+					gc.setBackground(palettes[2][i]);
+					gc.fillRectangle(i*colorWidth, 0, colorWidth, paletteHeight);
+				}
+				
+			}
+		});
+		compositePalette3.addMouseListener(new MouseListener() {
+			
+			@Override
+			public void mouseUp(MouseEvent arg0) {
+				
+			}
+			
+			@Override
+			public void mouseDown(MouseEvent e) {
+				currentPaletteIndex = e.x / (paletteWidth / 4);
+				currentPalette = 2;
+				compositeMain.redraw();
+				scrolledComposite.redraw();
+				composite.setBackground(palettes[currentPalette][currentPaletteIndex]);
+			}
+			
+			@Override
+			public void mouseDoubleClick(MouseEvent e) {
+				currentPaletteIndex = e.x / (paletteWidth / 4);
+				currentPalette = 2;
+				palettes[currentPalette][currentPaletteIndex] = paletteDialog.open();
+				compositeMain.redraw();
+				scrolledComposite.redraw();
+				composite.setBackground(palettes[currentPalette][currentPaletteIndex]);
+			}
+		});
+		Composite compositePalette4 = new Composite(shell, SWT.NONE);
+		compositePalette4.setBounds(989, 143, paletteWidth, paletteHeight);
+		compositePalette4.addPaintListener(new PaintListener() {
+			
+			@Override
+			public void paintControl(PaintEvent e) {
+				GC gc = e.gc;
+				int colorWidth = paletteWidth / 4;
+				for (int i=0; i<4; i++) {
+					gc.setBackground(palettes[3][i]);
+					gc.fillRectangle(i*colorWidth, 0, colorWidth, paletteHeight);
+				}
+				
+			}
+		});
+		compositePalette4.addMouseListener(new MouseListener() {
+			
+			@Override
+			public void mouseUp(MouseEvent arg0) {
+				
+			}
+			
+			@Override
+			public void mouseDown(MouseEvent e) {
+				currentPaletteIndex = e.x / (paletteWidth / 4);
+				currentPalette = 3;
+				compositeMain.redraw();
+				scrolledComposite.redraw();
+				composite.setBackground(palettes[currentPalette][currentPaletteIndex]);
+			}
+			
+			@Override
+			public void mouseDoubleClick(MouseEvent e) {
+				currentPaletteIndex = e.x / (paletteWidth / 4);
+				currentPalette = 3;
+				palettes[currentPalette][currentPaletteIndex] = paletteDialog.open();
+				compositeMain.redraw();
+				scrolledComposite.redraw();
+				composite.setBackground(palettes[currentPalette][currentPaletteIndex]);
+			}
+		});
+		Composite compositePalette5 = new Composite(shell, SWT.NONE);
+		compositePalette5.setBounds(1150, 23, paletteWidth, paletteHeight);
+		compositePalette5.addPaintListener(new PaintListener() {
+			
+			@Override
+			public void paintControl(PaintEvent e) {
+				GC gc = e.gc;
+				int colorWidth = paletteWidth / 4;
+				for (int i=0; i<4; i++) {
+					gc.setBackground(palettes[4][i]);
+					gc.fillRectangle(i*colorWidth, 0, colorWidth, paletteHeight);
+				}
+				
+			}
+		});
+		compositePalette5.addMouseListener(new MouseListener() {
+			
+			@Override
+			public void mouseUp(MouseEvent arg0) {
+				
+			}
+			
+			@Override
+			public void mouseDown(MouseEvent e) {
+				currentPaletteIndex = e.x / (paletteWidth / 4);
+				currentPalette = 4;
+				compositeMain.redraw();
+				scrolledComposite.redraw();
+				composite.setBackground(palettes[currentPalette][currentPaletteIndex]);
+			}
+			
+			@Override
+			public void mouseDoubleClick(MouseEvent e) {
+				currentPaletteIndex = e.x / (paletteWidth / 4);
+				currentPalette = 4;
+				palettes[currentPalette][currentPaletteIndex] = paletteDialog.open();
+				compositeMain.redraw();
+				scrolledComposite.redraw();
+				composite.setBackground(palettes[currentPalette][currentPaletteIndex]);
+			}
+		});
+		Composite compositePalette6 = new Composite(shell, SWT.NONE);
+		compositePalette6.setBounds(1150, 63, paletteWidth, paletteHeight);
+		compositePalette6.addPaintListener(new PaintListener() {
+			
+			@Override
+			public void paintControl(PaintEvent e) {
+				GC gc = e.gc;
+				int colorWidth = paletteWidth / 4;
+				for (int i=0; i<4; i++) {
+					gc.setBackground(palettes[5][i]);
+					gc.fillRectangle(i*colorWidth, 0, colorWidth, paletteHeight);
+				}
+				
+			}
+		});
+		compositePalette6.addMouseListener(new MouseListener() {
+			
+			@Override
+			public void mouseUp(MouseEvent arg0) {
+				
+			}
+			
+			@Override
+			public void mouseDown(MouseEvent e) {
+				currentPaletteIndex = e.x / (paletteWidth / 4);
+				currentPalette = 5;
+				compositeMain.redraw();
+				scrolledComposite.redraw();
+				composite.setBackground(palettes[currentPalette][currentPaletteIndex]);
+			}
+			
+			@Override
+			public void mouseDoubleClick(MouseEvent e) {
+				currentPaletteIndex = e.x / (paletteWidth / 4);
+				currentPalette = 5;
+				palettes[currentPalette][currentPaletteIndex] = paletteDialog.open();
+				compositeMain.redraw();
+				scrolledComposite.redraw();
+				composite.setBackground(palettes[currentPalette][currentPaletteIndex]);
+			}
+		});
+		Composite compositePalette7 = new Composite(shell, SWT.NONE);
+		compositePalette7.setBounds(1150, 103, paletteWidth, paletteHeight);
+		compositePalette7.addPaintListener(new PaintListener() {
+			
+			@Override
+			public void paintControl(PaintEvent e) {
+				GC gc = e.gc;
+				int colorWidth = paletteWidth / 4;
+				for (int i=0; i<4; i++) {
+					gc.setBackground(palettes[6][i]);
+					gc.fillRectangle(i*colorWidth, 0, colorWidth, paletteHeight);
+				}
+				
+			}
+		});
+		compositePalette7.addMouseListener(new MouseListener() {
+			
+			@Override
+			public void mouseUp(MouseEvent arg0) {
+				
+			}
+			
+			@Override
+			public void mouseDown(MouseEvent e) {
+				currentPaletteIndex = e.x / (paletteWidth / 4);
+				currentPalette = 6;
+				compositeMain.redraw();
+				scrolledComposite.redraw();
+				composite.setBackground(palettes[currentPalette][currentPaletteIndex]);
+			}
+			
+			@Override
+			public void mouseDoubleClick(MouseEvent e) {
+				currentPaletteIndex = e.x / (paletteWidth / 4);
+				currentPalette = 6;
+				palettes[currentPalette][currentPaletteIndex] = paletteDialog.open();
+				compositeMain.redraw();
+				scrolledComposite.redraw();
+				composite.setBackground(palettes[currentPalette][currentPaletteIndex]);
+			}
+		});
+		Composite compositePalette8 = new Composite(shell, SWT.NONE);
+		compositePalette8.setBounds(1150, 143, paletteWidth, paletteHeight);
+		compositePalette8.addPaintListener(new PaintListener() {
+			
+			@Override
+			public void paintControl(PaintEvent e) {
+				GC gc = e.gc;
+				int colorWidth = paletteWidth / 4;
+				for (int i=0; i<4; i++) {
+					gc.setBackground(palettes[7][i]);
+					gc.fillRectangle(i*colorWidth, 0, colorWidth, paletteHeight);
+				}
+				
+			}
+		});
+		compositePalette8.addMouseListener(new MouseListener() {
+			
+			@Override
+			public void mouseUp(MouseEvent arg0) {
+				// TODO Auto-generated method stub
+				
+			}
+			
+			@Override
+			public void mouseDown(MouseEvent e) {
+				currentPaletteIndex = e.x / (paletteWidth / 4);
+				currentPalette = 7;
+				compositeMain.redraw();
+				scrolledComposite.redraw();
+				composite.setBackground(palettes[currentPalette][currentPaletteIndex]);
+			}
+			
+			@Override
+			public void mouseDoubleClick(MouseEvent e) {
+				currentPaletteIndex = e.x / (paletteWidth / 4);
+				currentPalette = 7;
+				palettes[currentPalette][currentPaletteIndex] = paletteDialog.open();
+				compositeMain.redraw();
+				scrolledComposite.redraw();
+				composite.setBackground(palettes[currentPalette][currentPaletteIndex]);
+			}
+		});
+		
+		
+		scrolledComposite = new ScrolledComposite(shell, SWT.BORDER | SWT.H_SCROLL | SWT.V_SCROLL);
+		scrolledComposite.setBounds(989, 350, 256+5, 256+5);
+		scrolledComposite.setExpandHorizontal(true);
+		scrolledComposite.setExpandVertical(true);
 		scrolledComposite.addPaintListener(new PaintListener() {
 
 			@Override
@@ -166,13 +496,12 @@ public class AppMain {
 				gc.setForeground(display.getSystemColor(SWT.COLOR_GRAY));
 				gc.setBackground(display.getSystemColor(SWT.COLOR_RED));
 				
-	            //Rectangle rect = shell.getClientArea();
 	            gc.drawRectangle(0, 0, compositeWidth, compositeWidth);
 	            
 	            for (int i=0; i<8; i++) {
             		for (int j=0; j<8; j++) {
             			int index = spriteBytes[currentSpriteIndex][i][j];
-            			gc.setBackground(display.getSystemColor(palette[index]));
+            			gc.setBackground(palettes[currentPalette][index]);
             			gc.fillRectangle(j*compositeGridWidth, i*compositeGridWidth, compositeGridWidth, compositeGridWidth);
             		}
 	            }
@@ -202,11 +531,8 @@ public class AppMain {
 			
 			@Override
 			public void mouseDown(MouseEvent e) {
-				// TODO Auto-generated method stub
-//				System.out.println("mouseX: " + e.x + " mouseY: " + e.y);
-//				System.out.println("x: " + e.x / compositeGridWidth + " y: " + e.y / compositeGridWidth);
 				spriteBytes[currentSpriteIndex][(e.y / compositeGridWidth)%8][(e.x / compositeGridWidth)%8] = currentPaletteIndex;
-				shell.redraw();
+				compositeMain.redraw();
 				scrolledComposite.redraw();
 				mouseDown = true;
 			}
@@ -223,7 +549,7 @@ public class AppMain {
 				if (e.x > 0 && e.x < 256 && e.y > 0 && e.y < 256) {
 					if (mouseDown) {
 						spriteBytes[currentSpriteIndex][(e.y / compositeGridWidth)%8][(e.x / compositeGridWidth)%8] = currentPaletteIndex;
-						shell.redraw();
+						compositeMain.redraw();
 						scrolledComposite.redraw();
 					}
 				}
@@ -232,37 +558,30 @@ public class AppMain {
 				}
 			}
 		});
+		compositeMain = new ScrolledComposite(shell, SWT.BORDER | SWT.H_SCROLL | SWT.V_SCROLL);
 		
-		shell.addPaintListener(new PaintListener() {
-			
+		compositeMain.setBounds(200, 0, CANVAS_WIDTH+5, CANVAS_WIDTH+5);
+		compositeMain.setExpandHorizontal(true);
+		compositeMain.setExpandVertical(true);
+		compositeMain.addPaintListener(new PaintListener() {
 			@Override
 			public void paintControl(PaintEvent e) {
 				GC gc = e.gc;
-				gc.setForeground(display.getSystemColor(SWT.COLOR_GRAY));
-				gc.setBackground(display.getSystemColor(SWT.COLOR_BLACK));
 				
-	            //Rectangle rect = shell.getClientArea();
-	            gc.fillRectangle(0, 0, CANVAS_WIDTH, CANVAS_WIDTH);
-	            gc.drawRectangle(0, 0, CANVAS_WIDTH, CANVAS_WIDTH);
-	            gc.setBackground(display.getSystemColor(palette[0]));
-	            gc.fillRectangle(paletteX, paletteY, paletteWidth/4, paletteHeight);
-	            gc.setBackground(display.getSystemColor(palette[1]));
-	            gc.fillRectangle(paletteX+paletteWidth/4, paletteY, paletteWidth/4, paletteHeight);
-	            gc.setBackground(display.getSystemColor(palette[2]));
-	            gc.fillRectangle(paletteX+2*paletteWidth/4, paletteY, paletteWidth/4, paletteHeight);
-	            gc.setBackground(display.getSystemColor(palette[3]));
-	            gc.fillRectangle(paletteX+3*paletteWidth/4, paletteY, paletteWidth/4, paletteHeight);
-	            
-	            // Draw Sprite chars
+				// Draw Sprite chars
 	            for (int n=0; n<256; n++) {
 	            	for (int i=0; i<8; i++) {
 	            		for (int j=0; j<8; j++) {
 	            			int index = spriteBytes[n][i][j];
-	            			gc.setBackground(display.getSystemColor(palette[index]));
+	            			gc.setBackground(palettes[currentPalette][index]);
 	            			gc.fillRectangle(j*gridWidth + (n%16)*8*gridWidth, i*gridWidth+ (n/16)*8*gridWidth, gridWidth, gridWidth);
 	            		}
 	            	}
 	            }
+	            
+	            // draw outer frame
+	            gc.setForeground(new Color(156,156,156));
+	            gc.drawRectangle(0, 0, CANVAS_WIDTH, CANVAS_WIDTH);
 	            
 	            // draw gridlines
 	            for (int i=0; i<GRID_COUNT*16; i++) {
@@ -285,18 +604,13 @@ public class AppMain {
     			gc.setForeground(display.getSystemColor(SWT.COLOR_YELLOW));
     			gc.drawRectangle(currentSpriteX, currentSpriteY, gridWidth*8, gridWidth*8);
 	            
-	            // Print MouseX and MouseY
-	            gc.setForeground(display.getSystemColor(SWT.COLOR_YELLOW));
-	            gc.drawText("x: " + currentXIndex + ", y: " + currentYIndex, 1050, 750);
-	            
 			}
 		});
 		
-		shell.addMouseListener(new MouseListener() {
+		compositeMain.addMouseListener(new MouseListener() {
 
 			@Override
 			public void mouseDoubleClick(MouseEvent e) {
-				
 			}
 
 			@Override
@@ -309,31 +623,19 @@ public class AppMain {
 						currentYIndex = mouseY / gridWidth;
 						int spriteIndex = currentXIndex / 8 + (currentYIndex / 8)*16;
 						spriteBytes[spriteIndex][currentYIndex%8][currentXIndex%8] = currentPaletteIndex;
-						shell.redraw();
+						compositeMain.redraw();
 						scrolledComposite.redraw();
 					}
 				}
-//					else if (currentMode == SELECT_MODE) {
-//						currentSpriteIndex = (e.x / gridWidth) / 8 + ((e.y / gridWidth) / 8)*16;
-//						shell.redraw();
-//						scrolledComposite.redraw();
-//						lblTileNumber.setText("Tile Number: " + currentSpriteIndex);
-//					}
-//				}
 				if (e.x < CANVAS_WIDTH && e.y < CANVAS_WIDTH) {
 					if (currentMode == SELECT_MODE) {
 						currentSpriteIndex = (e.x / gridWidth) / 8 + ((e.y / gridWidth) / 8)*16;
-						shell.redraw();
+						compositeMain.redraw();
 						scrolledComposite.redraw();
 						lblTileNumber.setText("Tile Number: " + currentSpriteIndex);
 					}
 				}
 				mouseDown = true;
-				
-				if (e.x > paletteX && e.x < paletteX+paletteWidth && e.y > paletteY && e.y < paletteY + paletteHeight) {
-					currentPaletteIndex = (e.x - paletteX) / (paletteWidth / 4);
-					composite.setBackground(display.getSystemColor(palette[currentPaletteIndex]));
-				}
 			}
 
 			@Override
@@ -342,7 +644,7 @@ public class AppMain {
 			}
 			
 		});
-		shell.addMouseMoveListener(new MouseMoveListener() {
+		compositeMain.addMouseMoveListener(new MouseMoveListener() {
 			
 			@Override
 			public void mouseMove(MouseEvent e) {
@@ -355,15 +657,9 @@ public class AppMain {
 							currentYIndex = mouseY / gridWidth;
 							int spriteIndex = currentXIndex / 8 + (currentYIndex / 8)*16;
 							spriteBytes[spriteIndex][currentYIndex%8][currentXIndex%8] = currentPaletteIndex;
-							shell.redraw();
+							compositeMain.redraw();
 							scrolledComposite.redraw();
 						}
-//						else if (currentMode == SELECT_MODE) {
-//							currentSpriteIndex = (e.x / gridWidth) / 8 + ((e.y / gridWidth) / 8)*16;
-//							shell.redraw();
-//							scrolledComposite.redraw();
-//							lblTileNumber.setText("Tile Number: " + currentSpriteIndex);
-//						}
 					}
 				}
 			}
@@ -483,7 +779,7 @@ public class AppMain {
 		for (int n=0; n<256; n++) {
 			spriteBytes[n] = convertNesFormatToDisplayFormat(fileBytes, n);
 		}
-		shell.redraw();
+		compositeMain.redraw();
 		scrolledComposite.redraw();
 	}
 	
